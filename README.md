@@ -17,7 +17,7 @@ For now there is home server and proxy server. They are located in their dirs:
 I usally use vps for this task with debian
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/setup.sh | sh -s --
+curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/setup.sh | bash
 ```
 
 This script bootstraps vps installs docker and setups compose for mtproxy, vless and socks5 proxies. 
