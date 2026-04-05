@@ -14,6 +14,16 @@ For now there is home server and proxy server. They are located in their dirs:
 
 # Proxy/VPN server
 
-I usally use cheap vps for this task with debian, sometimes arch if availible by provider.
+I usally use vps for this task with debian
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/setup.sh | sh -s --
+```
 
+This script bootstraps vps installs docker and setups compose for mtproxy, vless and socks5 proxies. 
+
+Options are:
+```
+--dir <dir> - directory for compose files, default is /home/username/proxy
+--skip-bootstrap
+```

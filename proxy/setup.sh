@@ -11,6 +11,10 @@ set -e
 # MTPROTO_SECRET=ee...
 #
 # VLESS_PORT=8443
+#
+# SOCKS5_USERNAME=some_random_username
+# SOCKS5_PASSWORD=some_random_password
+# SOCKS5_PORT=1080
 
 ENV_FILE=".env"
 
@@ -71,6 +75,8 @@ generate_mtproto_secret() {
 #  $1 - server domain
 #  $2 - mtproto port
 bootstrap_mtproto() {
+    echo "Bootstrapping MTProto proxy..."
+
     local server_domain="$1"
     local mtproto_port="$2"
     local fake_domain mtproto_secret
@@ -170,6 +176,28 @@ generate_xray_config() {
     __add_to_credentials "VLESS (raw parameters)" "$vless_raw_credentials"
 }
 
+# args:
+# $1 - server domain
+# $2 - socks5 port
+setup_socks5_proxy() {
+    echo "Setting up SOCKS5 proxy with authentication..."
+
+    local server_domain="$1"
+    local socks5_port="$2"
+
+    local username password
+    username=$(openssl rand -hex 8)
+    password=$(openssl rand -hex 16)
+
+    __add_to_env "SOCKS5_USERNAME" "$username"
+    __add_to_env "SOCKS5_PASSWORD" "$password"
+    __add_to_env "SOCKS5_PORT" "$socks5_port"
+
+    local socks5_credentials
+    socks5_credentials="socks5://${username}:${password}@${server_domain}:${socks5_port}"
+    __add_to_credentials "SOCKS5 (with authentication)" "$socks5_credentials"
+}
+
 SERVER_DOMAIN=""
 SERVER_IP=""
 
@@ -256,6 +284,8 @@ main() {
     bootstrap_mtproto "$SERVER_DOMAIN" "$MTPROTO_PORT"
 
     generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT"
+
+    setup_socks5_proxy "$SERVER_DOMAIN" "$SOCKS5_PORT"
 
     printf "$boostrapped_credentials\n"
 

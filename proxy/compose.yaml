@@ -6,6 +6,8 @@ services:
     volumes:
       - "mtproto:/data"
     env_file: .env
+    environment:
+      - SECRET=$MTPROTO_SECRET
     ports:
       - "$MTPROTO_PORT:443"
     logging:
@@ -33,6 +35,19 @@ services:
       options:
         max-size: "100m"
         max-file: "10"
+
+  socks5:
+    image: serjs/go-socks5-proxy
+    container_name: socks5
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - REQUIRE_AUTH=true
+      - PROXY_USER=$SOCKS5_USERNAME
+      - PROXY_PASSWORD=$SOCKS5_PASSWORD
+      - PROXY_PORT=1080
+    ports:
+      - "$SOCKS5_PORT:1080"
 
 volumes:
   mtproto:
