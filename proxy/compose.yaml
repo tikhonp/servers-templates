@@ -24,7 +24,7 @@ services:
       - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
     env_file: .env
     ports:
-      - "$SERVER_IP:$VLESS_PORT:10237/tcp"
+      - "$SERVER_IP:$VLESS_PORT:$VLESS_PORT/tcp"
     expose:
       - "$VLESS_PORT"
     networks:
