@@ -3,7 +3,7 @@
   "inbounds": [
     {
       "tag": "vless-reality-inbound",
-      "listen": "172.20.0.10",
+      "listen": "VLESS_LISTEN_IP",
       "port": VLESS_PORT,
       "protocol": "vless",
       "settings": {

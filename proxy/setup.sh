@@ -15,6 +15,9 @@ set -e
 # SOCKS5_USERNAME=some_random_username
 # SOCKS5_PASSWORD=some_random_password
 # SOCKS5_PORT=1080
+#
+# XRAY_SUBNET=
+# XRAY_IP=
 
 ENV_FILE=".env"
 
@@ -138,6 +141,7 @@ generate_xray_config() {
 
     local server_domain="$1"
     local vless_port="$2"
+    local vless_listen_ip="$3"
 
     local fake_domain private_key public_key hash32 uuid short_id
 
@@ -150,6 +154,7 @@ generate_xray_config() {
     curl -L -o ./xray-config.json "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/xray-config.json" || exit 1
 
     sed -i \
+        -e "s|VLESS_LISTEN_IP|${vless_listen_ip}|g" \
         -e "s|VLESS_PORT|${vless_port}|g" \
         -e "s|VLESS_CLIENT_UUID|${uuid}|g" \
         -e "s|VLESS_FAKE_DOMAIN|${fake_domain}|g" \
@@ -236,6 +241,22 @@ generate_random_ports() {
     done
 }
 
+XRAY_SUBNET=""
+XRAY_IP=""
+
+generate_random_subnet_and_ip() {
+    local subnet_octet host_octet
+
+    subnet_octet=$(shuf -i 16-31 -n 1)
+    host_octet=$(shuf -i 2-254 -n 1)
+
+    XRAY_SUBNET="172.${subnet_octet}.0.0/16"
+    XRAY_IP="172.${subnet_octet}.0.${host_octet}"
+
+    __add_to_env "XRAY_SUBNET" "$XRAY_SUBNET"
+    __add_to_env "XRAY_IP" "$XRAY_IP"
+}
+
 PROJECT_DIRECTORY="$HOME/proxy"
 SKIP_BOOTSTRAP=false
 
@@ -277,13 +298,15 @@ main() {
     mkdir -p "$PROJECT_DIRECTORY"
     cd "$PROJECT_DIRECTORY" || exit 1
 
+    generate_random_subnet_and_ip
+
     curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/compose.yaml" || exit 1
 
     ask_for_server_domain_and_ip
 
     bootstrap_mtproto "$SERVER_DOMAIN" "$MTPROTO_PORT"
 
-    generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT"
+    generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT" "$XRAY_IP"
 
     setup_socks5_proxy "$SERVER_DOMAIN" "$SOCKS5_PORT"
 
