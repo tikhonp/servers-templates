@@ -1,0 +1,38 @@
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "tag": "vless-reality-inbound",
+      "listen": "172.20.0.10",
+      "port": VLESS_PORT,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "VLESS_CLIENT_UUID",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "VLESS_FAKE_DOMAIN:443",
+          "xver": 0,
+          "serverNames": ["VLESS_SERVER_DOMAIN", "VLESS_FAKE_DOMAIN"],
+          "privateKey": "VLESS_PRIVATE_KEY",
+          "shortIds": ["VLESS_SHORT_ID"]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct-outbound",
+      "protocol": "freedom"
+    }
+  ]
+}

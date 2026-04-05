@@ -9,6 +9,8 @@ set -e
 #
 # MTPROTO_PORT=443
 # MTPROTO_SECRET=ee...
+#
+# VLESS_PORT=8443
 
 ENV_FILE=".env"
 
@@ -90,6 +92,84 @@ bootstrap_mtproto() {
     __add_to_credentials "MTProto (telegram-proxy)" "$credentials"
 }
 
+generate_xray_short_id() {
+    openssl rand -hex 8
+}
+
+generate_xray_uuid() {
+    uuidgen --time-v7
+}
+
+# outputs private key, public key and hash32 for x25519 in this format:
+# <private_key> <public_key> <hash32>
+generate_x25519_key_pair() {
+    local data
+    data=$(docker run --rm ghcr.io/xtls/xray-core x25519)
+
+    # data contains something like:
+    # 
+    # PrivateKey: -AB-FsyY-Bxf1Y9FsTBDrBC-RSa2wKgJ3Jfk-Ev1oVs
+    # Password (PublicKey): I8dJ46slbzxLouqc5IaDT5iOtmZ9uqptEWa_dsCP6HM
+    # Hash32: 91M-4YOEUz3HSsReTeHwMbWdNPEYIm75zaap94wz1Pw
+    #
+    # We need to extract private and public keys from this output.
+
+    local private_key public_key hash32
+    private_key=$(echo "$data" | grep "PrivateKey:" | awk '{print $2}')
+    public_key=$(echo "$data" | grep "Password (PublicKey):" | awk '{print $3}')
+    hash32=$(echo "$data" | grep "Hash32:" | awk '{print $2}')
+
+    echo "$private_key" "$public_key" "$hash32"
+}
+
+# args:
+# $1 - server domain
+# $2 - vless port
+#
+# Script generates xray-config.json file
+generate_xray_config() {
+    echo "Generating xray config for VLESS..."
+
+    local server_domain="$1"
+    local vless_port="$2"
+
+    local fake_domain private_key public_key hash32 uuid short_id
+
+    printf "Enter fake domain for VLESS (used for Fake TLS): "
+    read -r fake_domain
+    read -r private_key public_key hash32 < <(generate_x25519_key_pair)
+    uuid=$(generate_xray_uuid)
+    short_id=$(generate_xray_short_id)
+
+    curl -L -o ./xray-config.json "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/xray-config.json" || exit 1
+
+    sed -i \
+        -e "s|VLESS_PORT|${vless_port}|g" \
+        -e "s|VLESS_CLIENT_UUID|${uuid}|g" \
+        -e "s|VLESS_FAKE_DOMAIN|${fake_domain}|g" \
+        -e "s|VLESS_SERVER_DOMAIN|${server_domain}|g" \
+        -e "s|VLESS_PRIVATE_KEY|${private_key}|g" \
+        -e "s|VLESS_SHORT_ID|${short_id}|g" ./xray-config.json
+
+    __add_to_env "VLESS_PORT" "$vless_port"
+
+    # generate url with following format:
+    # vless://OjAxOWQ0ZWUxLWFmMzItN2E3Mi1hYjNlLWE2ZmM4N2UwNzI5OEBmbC52cG4udGlraG9ubm5ubi5jb206MTAyMzc?tls=1&peer=yandex.ru&allowInsecure=1&xtls=2&pbk=aW6sys6gClRliMAu-GeWXyQ0ND6ndsiJ5POeILE30hs&sid=7e160f7da913b19a
+
+    # :019d4ee1-af32-7a72-ab3e-a6fc87e07298@fl.vpn.tikhonnnn.com:10237
+    local server_data server_data_encoded_base64
+    server_data=":${uuid}@${server_domain}:${vless_port}"
+    server_data_encoded_base64=$(printf "%s" "$server_data" | base64 -w 0)
+
+    local vless_credentials
+    vless_credentials="vless://${server_data_encoded_base64}?tls=1&peer=${fake_domain}&allowInsecure=1&xtls=2&pbk=${public_key}&sid=${short_id}"
+    __add_to_credentials "VLESS (xray) shadowrocket url:" "$vless_credentials"
+
+    local vless_raw_credentials
+    vless_raw_credentials="server: ${server_domain}\nport: ${vless_port}\nuuid: ${uuid}\nfake domain for fake tls: ${fake_domain}\npublic key for x25519: ${public_key}\nshort id for xray: ${short_id}"
+    __add_to_credentials "VLESS (raw parameters)" "$vless_raw_credentials"
+}
+
 SERVER_DOMAIN=""
 SERVER_IP=""
 
@@ -151,12 +231,12 @@ parse_arguments() {
                 ;;
         esac
     done
-
-    generate_random_ports
 }
 
 main() {
     parse_arguments "$@"
+
+    generate_random_ports
 
     if [ "$SKIP_BOOTSTRAP" = false ]; then
         echo "Bootstrapping system..."
@@ -173,8 +253,9 @@ main() {
 
     ask_for_server_domain_and_ip
 
-    # here we can add more bootstrapping functions for other services if needed
     bootstrap_mtproto "$SERVER_DOMAIN" "$MTPROTO_PORT"
+
+    generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT"
 
     printf "$boostrapped_credentials\n"
 

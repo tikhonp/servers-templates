@@ -14,27 +14,32 @@ services:
         max-size: "100m"
         max-file: "10"
 
-  # xray:
-  #   image: ghcr.io/xtls/xray-core:latest
-  #   container_name: xray
-  #   restart: always
-  #   volumes:
-  #     - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
-  #   networks:
-  #     bypassnet:
-  #       ipv4_address: 172.20.0.10
-  #   ports:
-  #     - "138.124.0.229:10237:10237/tcp"
-  #   expose:
-  #     - "10237"
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray
+    restart: unless-stopped
+    volumes:
+      - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
+    env_file: .env
+    ports:
+      - "$SERVER_IP:$VLESS_PORT:10237/tcp"
+    expose:
+      - "$VLESS_PORT"
+    networks:
+      xraynet:
+        ipv4_address: 172.20.0.10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
 volumes:
   mtproto:
 
-# networks:
-#   bypassnet:
-#     ipam:
-#       driver: default
-#       config:
-#         - subnet: "172.20.0.0/16"
-#
+networks:
+  xraynet:
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.20.0.0/16"
