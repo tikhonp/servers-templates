@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -e
+
 # SCHEME FOR .env file:
 #
 # SERVER_DOMAIN=vpn.example.com
@@ -94,19 +96,94 @@ SERVER_IP=""
 # Asks user for server domain and ip, adds them to .env file.
 # Also stores them in global variables for later use.
 ask_for_server_domain_and_ip() {
+    local suggested_public_ip
+    suggested_public_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
 
+    printf "Enter server domain or public ip (e.g. vpn.example.com or 123.45.678.90): "
+    read -r SERVER_DOMAIN
+
+    printf "Enter server public IP (suggested: %s): " "$suggested_public_ip"
+    read -r SERVER_IP
+
+    __add_to_env "SERVER_DOMAIN" "$SERVER_DOMAIN"
+    __add_to_env "SERVER_IP" "$SERVER_IP"
+}
+
+MTPROTO_PORT=
+VLESS_PORT=
+SOCKS5_PORT=
+
+generate_random_ports() {
+    MTPROTO_PORT=$(shuf -i 20000-65535 -n 1)
+    VLESS_PORT=$(shuf -i 20000-65535 -n 1)
+    SOCKS5_PORT=$(shuf -i 20000-65535 -n 1)
+
+    # Ensure ports are unique
+    while [ "$VLESS_PORT" = "$MTPROTO_PORT" ] || [ "$VLESS_PORT" = "$SOCKS5_PORT" ]; do
+        VLESS_PORT=$(shuf -i 20000-65535 -n 1)
+    done
+
+    while [ "$SOCKS5_PORT" = "$MTPROTO_PORT" ] || [ "$SOCKS5_PORT" = "$VLESS_PORT" ]; do
+        SOCKS5_PORT=$(shuf -i 20000-65535 -n 1)
+    done
+}
+
+PROJECT_DIRECTORY="$HOME/proxy"
+SKIP_BOOTSTRAP=false
+
+# args:
+#  --dir <project_directory> - directory to setup proxy in, default is $HOME/proxy
+#  --skip-bootstrap - skip bootstrapping system, only setup proxy
+parse_arguments() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --dir)
+                PROJECT_DIRECTORY="$2"
+                shift 2
+                ;;
+            --skip-bootstrap)
+                SKIP_BOOTSTRAP=true
+                shift
+                ;;
+            *)
+                echo "Unknown argument: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    generate_random_ports
 }
 
 main() {
-    project_directory="$HOME"/proxy
-    echo "Setting up proxy in $project_directory"
-    mkdir -p "$project_directory"
-    cd "$project_directory" || exit 1
+    parse_arguments "$@"
+
+    if [ "$SKIP_BOOTSTRAP" = false ]; then
+        echo "Bootstrapping system..."
+        curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/bootstrap-system.sh | sh -s --
+    else
+        echo "Skipping system bootstrap as per argument."
+    fi
+
+    echo "Setting up proxy in $PROJECT_DIRECTORY"
+    mkdir -p "$PROJECT_DIRECTORY"
+    cd "$PROJECT_DIRECTORY" || exit 1
+
+    curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/compose.yaml" || exit 1
 
     ask_for_server_domain_and_ip
 
     # here we can add more bootstrapping functions for other services if needed
-    bootstrap_mtproto "$SERVER_DOMAIN" "443"
+    bootstrap_mtproto "$SERVER_DOMAIN" "$MTPROTO_PORT"
 
     printf "$boostrapped_credentials\n"
+
+    echo "Setup complete! Now run:
+
+    cd $PROJECT_DIRECTORY
+    docker compose up -d
+
+to start your proxy."
 }
+
+main "$@"
