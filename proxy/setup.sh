@@ -18,6 +18,7 @@ set -e
 #
 # XRAY_SUBNET=
 # XRAY_IP=
+# CONTAINER_POSTFIX=
 
 ENV_FILE=".env"
 
@@ -243,6 +244,7 @@ generate_random_ports() {
 
 XRAY_SUBNET=""
 XRAY_IP=""
+CONTAINER_POSTFIX=""
 
 generate_random_subnet_and_ip() {
     local subnet_octet host_octet
@@ -255,6 +257,11 @@ generate_random_subnet_and_ip() {
 
     __add_to_env "XRAY_SUBNET" "$XRAY_SUBNET"
     __add_to_env "XRAY_IP" "$XRAY_IP"
+}
+
+generate_container_postfix() {
+    CONTAINER_POSTFIX=$(openssl rand -hex 2)
+    __add_to_env "CONTAINER_POSTFIX" "$CONTAINER_POSTFIX"
 }
 
 PROJECT_DIRECTORY="$HOME/proxy"
@@ -299,6 +306,7 @@ main() {
     cd "$PROJECT_DIRECTORY" || exit 1
 
     generate_random_subnet_and_ip
+    generate_container_postfix
 
     curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/compose.yaml" || exit 1
 

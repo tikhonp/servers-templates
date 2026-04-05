@@ -1,7 +1,7 @@
 services:
   mtproto:
     image: telegrammessenger/proxy:latest
-    container_name: mtproto
+    container_name: "mtproto-${CONTAINER_POSTFIX}"
     restart: unless-stopped
     volumes:
       - "mtproto:/data"
@@ -18,7 +18,7 @@ services:
 
   xray:
     image: ghcr.io/xtls/xray-core:latest
-    container_name: xray
+    container_name: "xray-${CONTAINER_POSTFIX}"
     restart: unless-stopped
     volumes:
       - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
@@ -38,7 +38,7 @@ services:
 
   socks5:
     image: serjs/go-socks5-proxy
-    container_name: socks5
+    container_name: "socks5-${CONTAINER_POSTFIX}"
     restart: unless-stopped
     env_file: .env
     environment:
