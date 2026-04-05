@@ -1,0 +1,40 @@
+services:
+  mtproto:
+    image: telegrammessenger/proxy:latest
+    container_name: mtproto
+    restart: unless-stopped
+    volumes:
+      - "mtproto:/data"
+    env_file: .env
+    ports:
+      - "$MTPROTO_PORT:443"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  # xray:
+  #   image: ghcr.io/xtls/xray-core:latest
+  #   container_name: xray
+  #   restart: always
+  #   volumes:
+  #     - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
+  #   networks:
+  #     bypassnet:
+  #       ipv4_address: 172.20.0.10
+  #   ports:
+  #     - "138.124.0.229:10237:10237/tcp"
+  #   expose:
+  #     - "10237"
+
+volumes:
+  mtproto:
+
+# networks:
+#   bypassnet:
+#     ipam:
+#       driver: default
+#       config:
+#         - subnet: "172.20.0.0/16"
+#
