@@ -205,11 +205,11 @@ setup_proxy() {
 
     local socks5_credentials
     socks5_credentials="socks5://${username}:${password}@${server_domain}:${socks5_port}"
-    __add_to_credentials "SOCKS5:" "$socks5_credentials"
+    __add_to_credentials "SOCKS5 proxy" "$socks5_credentials"
 
     local http_credentials
     http_credentials="http://${username}:${password}@${server_domain}:${http_port}"
-    __add_to_credentials "HTTP:" "$http_credentials"
+    __add_to_credentials "HTTP proxy" "$http_credentials"
 }
 
 SERVER_DOMAIN=""
