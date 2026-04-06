@@ -37,17 +37,23 @@ services:
         max-file: "10"
 
   socks5:
-    image: serjs/go-socks5-proxy
-    container_name: "socks5-${CONTAINER_POSTFIX}"
+    image: ghcr.io/tarampampam/3proxy:latest
+    container_name: "proxy-${CONTAINER_POSTFIX}"
     restart: unless-stopped
     env_file: .env
     environment:
-      - REQUIRE_AUTH=true
-      - PROXY_USER=$SOCKS5_USERNAME
-      - PROXY_PASSWORD=$SOCKS5_PASSWORD
-      - PROXY_PORT=1080
+      - PROXY_LOGIN=$PROXY_USERNAME
+      - PROXY_PASSWORD=$PROXY_PASSWORD
+      - PROXY_PORT=3128
+      - SOCKS_PORT=1080
     ports:
-      - "$SOCKS5_PORT:1080"
+      - "$PROXY_SOCKS5_PORT:1080/tcp"
+      - "$PROXY_HTTP_PORT:1080/tcp"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
 volumes:
   mtproto:

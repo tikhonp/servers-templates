@@ -12,9 +12,10 @@ set -e
 #
 # VLESS_PORT=8443
 #
-# SOCKS5_USERNAME=some_random_username
-# SOCKS5_PASSWORD=some_random_password
-# SOCKS5_PORT=1080
+# PROXY_USERNAME=some_random_username
+# PROXY_PASSWORD=some_random_password
+# PROXY_SOCKS5_PORT=1080
+# PROXY_HTTTP_PORT=8080
 #
 # XRAY_SUBNET=
 # XRAY_IP=
@@ -185,23 +186,30 @@ generate_xray_config() {
 # args:
 # $1 - server domain
 # $2 - socks5 port
-setup_socks5_proxy() {
-    echo "Setting up SOCKS5 proxy with authentication..."
+# $2 - http port
+setup_proxy() {
+    echo "Setting up HTTP/SOCKS5 proxy with authentication..."
 
     local server_domain="$1"
     local socks5_port="$2"
+    local http_port="$3"
 
     local username password
     username=$(openssl rand -hex 8)
     password=$(openssl rand -hex 16)
 
-    __add_to_env "SOCKS5_USERNAME" "$username"
-    __add_to_env "SOCKS5_PASSWORD" "$password"
-    __add_to_env "SOCKS5_PORT" "$socks5_port"
+    __add_to_env "PROXY_USERNAME" "$username"
+    __add_to_env "PROXY_PASSWORD" "$password"
+    __add_to_env "PROXY_SOCKS5_PORT" "$socks5_port"
+    __add_to_env "PROXY_HTTP_PORT" "$http_port"
 
     local socks5_credentials
     socks5_credentials="socks5://${username}:${password}@${server_domain}:${socks5_port}"
-    __add_to_credentials "SOCKS5 (with authentication)" "$socks5_credentials"
+    __add_to_credentials "SOCKS5:" "$socks5_credentials"
+
+    local http_credentials
+    http_credentials="http://${username}:${password}@${server_domain}:${http_port}"
+    __add_to_credentials "HTTP:" "$http_credentials"
 }
 
 SERVER_DOMAIN=""
@@ -213,11 +221,12 @@ ask_for_server_domain_and_ip() {
     local suggested_public_ip
     suggested_public_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
 
-    printf "Enter server domain or public ip (e.g. vpn.example.com or 123.45.678.90): "
+    printf "Seems like your server's public IP as: %s\n" "$suggested_public_ip"
+
+    printf "Enter server domain or public ip (e.g. vpn.example.com): "
     read -r SERVER_DOMAIN
 
-    printf "Enter server public IP (suggested: %s): " "$suggested_public_ip"
-    read -r SERVER_IP
+    read -e -i "$suggested_public_ip" -p "Enter server public IP: " SERVER_IP
 
     __add_to_env "SERVER_DOMAIN" "$SERVER_DOMAIN"
     __add_to_env "SERVER_IP" "$SERVER_IP"
@@ -226,20 +235,14 @@ ask_for_server_domain_and_ip() {
 MTPROTO_PORT=
 VLESS_PORT=
 SOCKS5_PORT=
+HTTP_PORT=
 
 generate_random_ports() {
-    MTPROTO_PORT=$(shuf -i 20000-65535 -n 1)
-    VLESS_PORT=$(shuf -i 20000-65535 -n 1)
-    SOCKS5_PORT=$(shuf -i 20000-65535 -n 1)
+    echo "Generating random ports for MTProto, VLESS, SOCKS5 and HTTP..."
 
-    # Ensure ports are unique
-    while [ "$VLESS_PORT" = "$MTPROTO_PORT" ] || [ "$VLESS_PORT" = "$SOCKS5_PORT" ]; do
-        VLESS_PORT=$(shuf -i 20000-65535 -n 1)
-    done
-
-    while [ "$SOCKS5_PORT" = "$MTPROTO_PORT" ] || [ "$SOCKS5_PORT" = "$VLESS_PORT" ]; do
-        SOCKS5_PORT=$(shuf -i 20000-65535 -n 1)
-    done
+    read -r MTPROTO_PORT VLESS_PORT SOCKS5_PORT HTTP_PORT < <(
+        shuf -i 20000-65535 -n 4
+    )
 }
 
 XRAY_SUBNET=""
@@ -316,9 +319,12 @@ main() {
 
     generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT" "$XRAY_IP"
 
-    setup_socks5_proxy "$SERVER_DOMAIN" "$SOCKS5_PORT"
+    setup_proxy "$SERVER_DOMAIN" "$SOCKS5_PORT" "$HTTP_PORT"
 
     printf "$boostrapped_credentials\n"
+
+    echo "$boostrapped_credentials" > credentials.txt
+    echo "All credentials have been saved to credentials.txt in the project directory."
 
     echo "Setup complete! Now run:
 
