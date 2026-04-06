@@ -166,10 +166,6 @@ generate_xray_config() {
 
     __add_to_env "VLESS_PORT" "$vless_port"
 
-    # generate url with following format:
-    # vless://OjAxOWQ0ZWUxLWFmMzItN2E3Mi1hYjNlLWE2ZmM4N2UwNzI5OEBmbC52cG4udGlraG9ubm5ubi5jb206MTAyMzc?tls=1&peer=yandex.ru&allowInsecure=1&xtls=2&pbk=aW6sys6gClRliMAu-GeWXyQ0ND6ndsiJ5POeILE30hs&sid=7e160f7da913b19a
-
-    # :019d4ee1-af32-7a72-ab3e-a6fc87e07298@fl.vpn.tikhonnnn.com:10237
     local server_data server_data_encoded_base64
     server_data=":${uuid}@${server_domain}:${vless_port}"
     server_data_encoded_base64=$(printf "%s" "$server_data" | base64 -w 0)

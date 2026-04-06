@@ -50,6 +50,21 @@ services:
         max-size: "10mb"
         max-file: "1"
 
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10mb"
+        max-file: "1"
+
 volumes:
   ts-data:
   homebridge:

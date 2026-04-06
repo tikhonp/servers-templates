@@ -28,6 +28,17 @@ __add_to_credentials() {
     boostrapped_credentials="${boostrapped_credentials}\n${name}:\n${value}\n"
 }
 
+# Args:
+# Packages to install, e.g. "docker docker-compose"
+install_packages() {
+    local packages="$1"
+
+    if [ -n "$packages" ]; then
+        sudo apt update
+        sudo apt install -y $packages
+    fi
+}
+
 PROJECT_DIRECTORY="$HOME/hommy"
 SKIP_BOOTSTRAP=false
 
@@ -64,17 +75,98 @@ ask_for_env_vars() {
     __add_to_env "HTTPS_PROXY" "$HTTP_PROXY"
 }
 
+# args:
+#  - $1 - shadowrocket link
+setup_xray() {
+    local shadowrocket_link="$1"
+
+    if [ -z "$shadowrocket_link" ]; then
+        read -p "Enter VLESS shadowrocket link: " shadowrocket_link
+    fi
+
+    local link_body base64_part query_string
+    link_body="${shadowrocket_link#vless://}"
+    base64_part="${link_body%%\?*}"
+    query_string=""
+    if [[ "$shadowrocket_link" == *\?* ]]; then
+        query_string="${shadowrocket_link#*\?}"
+    fi
+
+    local decoded_server_data
+    if ! decoded_server_data=$(printf "%s" "$base64_part" | base64 --decode 2>/dev/null); then
+        echo "Failed to decode shadowrocket link. Make sure it is valid." >&2
+        exit 1
+    fi
+
+    decoded_server_data="${decoded_server_data#:}"
+
+    if [[ "$decoded_server_data" != *@*:* ]]; then
+        echo "Unexpected server data format in the shadowrocket link: $decoded_server_data" >&2
+        exit 1
+    fi
+
+    local vless_server_uuid vless_server_address vless_server_port
+    vless_server_uuid="${decoded_server_data%%@*}"
+    local after_at="${decoded_server_data#*@}"
+    vless_server_address="${after_at%:*}"
+    vless_server_port="${after_at##*:}"
+
+    local vless_fake_tls_host="" vless_public_key="" vless_short_id=""
+    IFS='&' read -ra kv_pairs <<< "$query_string"
+    for pair in "${kv_pairs[@]}"; do
+        case "$pair" in
+            peer=*) vless_fake_tls_host="${pair#peer=}" ;;
+            pbk=*) vless_public_key="${pair#pbk=}" ;;
+            sid=*) vless_short_id="${pair#sid=}" ;;
+        esac
+    done
+    unset IFS
+
+    if [ -z "$vless_fake_tls_host" ] || [ -z "$vless_public_key" ] || [ -z "$vless_short_id" ]; then
+        echo "Shadowrocket link must contain peer, pbk and sid query parameters." >&2
+        exit 1
+    fi
+
+    echo "Generating WireGuard keys..."
+    local wg_private_key wg_public_key wg_peer_private_key wg_peer_public_key wg_listen_port
+    wg_private_key=$(wg genkey)
+    wg_public_key=$(printf "%s" "$wg_private_key" | wg pubkey)
+    wg_peer_private_key=$(wg genkey)
+    wg_peer_public_key=$(printf "%s" "$wg_peer_private_key" | wg pubkey)
+    wg_listen_port=$(shuf -i 20000-65535 -n 1)
+
+    curl -L -o ./xray-config.json "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/xray-config.json" || exit 1
+
+    sed -i \
+        -e "s|WG_LISTEN_PORT|${wg_listen_port}|g" \
+        -e "s|WG_PRIVATE_KEY|${wg_private_key}|g" \
+        -e "s|WG_PEER_PUBLIC_KEY|${wg_peer_public_key}|g" \
+        -e "s|VLESS_SERVER_ADDRESS|${vless_server_address}|g" \
+        -e "s|VLESS_SERVER_PORT|${vless_server_port}|g" \
+        -e "s|VLESS_SERVER_UUID|${vless_server_uuid}|g" \
+        -e "s|VLESS_FAKE_TLS_HOST|${vless_fake_tls_host}|g" \
+        -e "s|VLESS_PUBLIC_KEY|${vless_public_key}|g" \
+        -e "s|VLESS_SHORT_ID|${vless_short_id}|g" ./xray-config.json
+
+    local server_ip
+    server_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
+
+    local wg_client_config
+    wg_client_config="[Interface]\nPrivateKey = ${wg_peer_private_key}\nAddress = 10.0.0.2/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = ${wg_public_key}\nAllowedIPs = 0.0.0.0/0,::/0\nEndpoint = ${server_ip}:${wg_listen_port}\nPersistentKeepalive = 25"
+    __add_to_credentials "WireGuard client config" "$wg_client_config"
+}
+
 main() {
     parse_arguments "$@"
-
-    generate_random_ports
 
     if [ "$SKIP_BOOTSTRAP" = false ]; then
         echo "Bootstrapping system..."
         curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/bootstrap-system.sh | sh -s --
+        install_packages "wireguard"
     else
         echo "Skipping system bootstrap as per argument."
     fi
+
 
     echo "Setting up proxy in $PROJECT_DIRECTORY"
     if [ -d "$PROJECT_DIRECTORY" ]; then
@@ -87,6 +179,8 @@ main() {
     curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/compose.yaml" || exit 1
 
     ask_for_env_vars
+
+    setup_xray
 
     printf "$boostrapped_credentials\n"
 
