@@ -57,9 +57,11 @@ services:
 
 volumes:
   mtproto:
+    name: "mtproto-${CONTAINER_POSTFIX}"
 
 networks:
   xraynet:
+    name: "xraynet-${CONTAINER_POSTFIX}"
     ipam:
       driver: default
       config:
