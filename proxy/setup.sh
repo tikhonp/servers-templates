@@ -240,9 +240,12 @@ HTTP_PORT=
 generate_random_ports() {
     echo "Generating random ports for MTProto, VLESS, SOCKS5 and HTTP..."
 
-    read -r MTPROTO_PORT VLESS_PORT SOCKS5_PORT HTTP_PORT < <(
-        shuf -i 20000-65535 -n 4
-    )
+    ports=($(shuf -i 20000-65535 -n 4))
+
+    MTPROTO_PORT=${ports[0]}
+    VLESS_PORT=${ports[1]}
+    SOCKS5_PORT=${ports[2]}
+    HTTP_PORT=${ports[3]}
 }
 
 XRAY_SUBNET=""
@@ -305,6 +308,10 @@ main() {
     fi
 
     echo "Setting up proxy in $PROJECT_DIRECTORY"
+    if [ -d "$PROJECT_DIRECTORY" ]; then
+        echo "Directory $PROJECT_DIRECTORY already exists. Please choose a different directory or remove it."
+        exit 1
+    fi
     mkdir -p "$PROJECT_DIRECTORY"
     cd "$PROJECT_DIRECTORY" || exit 1
 
@@ -323,7 +330,7 @@ main() {
 
     printf "$boostrapped_credentials\n"
 
-    echo "$boostrapped_credentials" > credentials.txt
+    printf "$boostrapped_credentials" > credentials.txt
     echo "All credentials have been saved to credentials.txt in the project directory."
 
     echo "Setup complete! Now run:
