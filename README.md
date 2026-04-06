@@ -12,6 +12,10 @@ For now there is home server and proxy server. They are located in their dirs:
 
 # Hommy server
 
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/setup.sh)"
+```
+
 # Proxy/VPN server
 
 I usally use vps for this task with debian
