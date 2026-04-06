@@ -255,7 +255,7 @@ CONTAINER_POSTFIX=""
 generate_random_subnet_and_ip() {
     local subnet_octet host_octet
 
-    subnet_octet=$(shuf -i 16-31 -n 1)
+    subnet_octet=$(shuf -i 20-254 -n 1)
     host_octet=$(shuf -i 2-254 -n 1)
 
     XRAY_SUBNET="172.${subnet_octet}.0.0/16"
