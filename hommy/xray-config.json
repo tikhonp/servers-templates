@@ -16,7 +16,7 @@
           {
             "publicKey": "WG_PEER_PUBLIC_KEY",
             "allowedIPs": [
-              "10.0.0.2/32"
+              "10.0.0.3/32"
             ],
             "keepAlive": 0
           }
