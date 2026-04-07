@@ -21,7 +21,7 @@ services:
         max-size: "10mb"
         max-file: "1"
 
-  tailscale:
+  ts-homebridge:
     image: tailscale/tailscale:latest
     container_name: ts-homebridge
     hostname: "${NODE_NAME}-homebridge"
@@ -35,7 +35,6 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     env_file: .env
     environment:
-      - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false
       - TS_SERVE_CONFIG=/config/serve.json

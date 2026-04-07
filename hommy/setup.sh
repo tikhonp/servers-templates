@@ -5,6 +5,7 @@ set -e
 # SCHEME FOR .env file:
 #
 # TS_AUTHKEY=your_ts_authkey
+# TS_EXTRA_ARGS=if needed
 # NODE_NAME=your_node_name
 # HTTP_PROXY=http://your_proxy:port
 # HTTPS_PROXY=http://your_proxy:port
@@ -66,10 +67,14 @@ parse_arguments() {
 
 ask_for_env_vars() {
     read -p "Enter TS_AUTHKEY: " TS_AUTHKEY
+    read -p "Enter TS_EXTRA_ARGS (or leave empty): " TS_EXTRA_ARGS
     read -p "Enter NODE_NAME: " NODE_NAME
     read -p "Enter HTTP_PROXY: " HTTP_PROXY
 
     __add_to_env "TS_AUTHKEY" "$TS_AUTHKEY"
+    if [ -n "$TS_EXTRA_ARGS" ]; then
+        __add_to_env "TS_EXTRA_ARGS" "$TS_EXTRA_ARGS"
+    fi
     __add_to_env "NODE_NAME" "$NODE_NAME"
     __add_to_env "HTTP_PROXY" "$HTTP_PROXY"
     __add_to_env "HTTPS_PROXY" "$HTTP_PROXY"
@@ -171,7 +176,6 @@ main() {
     else
         echo "Skipping system bootstrap as per argument."
     fi
-
 
     echo "Setting up proxy in $PROJECT_DIRECTORY"
     if [ -d "$PROJECT_DIRECTORY" ]; then
