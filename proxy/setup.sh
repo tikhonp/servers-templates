@@ -108,7 +108,7 @@ generate_xray_short_id() {
 }
 
 generate_xray_uuid() {
-    uuidgen --time-v7
+    uuidgen
 }
 
 # outputs private key, public key and hash32 for x25519 in this format:

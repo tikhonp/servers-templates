@@ -162,7 +162,7 @@ setup_xray() {
     server_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
 
     local wg_client_config
-    wg_client_config="[Interface]\nPrivateKey = ${wg_peer_private_key}\nAddress = 10.0.0.2/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = ${wg_public_key}\nAllowedIPs = 0.0.0.0/0,::/0\nEndpoint = ${server_ip}:${wg_listen_port}\nPersistentKeepalive = 25"
+    wg_client_config="[Interface]\nPrivateKey = ${wg_peer_private_key}\nAddress = 10.0.0.3/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = ${wg_public_key}\nAllowedIPs = 0.0.0.0/0,::/0\nEndpoint = ${server_ip}:${wg_listen_port}\nPersistentKeepalive = 25"
     __add_to_credentials "WireGuard client config" "$wg_client_config"
 }
 
