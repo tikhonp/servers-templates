@@ -92,16 +92,16 @@ setup_xray() {
         query_string="${shadowrocket_link#*\?}"
     fi
 
-    printf "base64_part = [%s]\n" "$base64_part"
     local decoded_server_data
-    decoded_server_data=$(printf "%s" "$base64_part" | base64 --decode 2>/dev/null)
+    # normalize base64 (URL-safe → standard + fix padding)
+    base64_part=$(printf "%s" "$base64_part" | tr '_-' '/+')
+    pad=$((4 - ${#base64_part} % 4))
+    [ $pad -lt 4 ] && base64_part="${base64_part}$(printf '=%.0s' $(seq 1 $pad))"
+    decoded_server_data=$(printf "%s" "$base64_part" | base64 -d 2>/dev/null || true)
     if [ -z "$decoded_server_data" ]; then
-    	echo "2"
         echo "Failed to decode shadowrocket link. Make sure it is valid." >&2
         exit 1
     fi
-    echo "3"
-    echo "$decoded_server_data"
 
     decoded_server_data="${decoded_server_data#:}"
 
