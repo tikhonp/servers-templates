@@ -21,10 +21,10 @@ services:
         max-size: "10mb"
         max-file: "1"
 
-  ts-homebridge:
+  tailscale:
     image: tailscale/tailscale:latest
-    container_name: ts-homebridge
-    hostname: "${NODE_NAME}-homebridge"
+    container_name: tailscale
+    hostname: "${NODE_NAME}"
     restart: unless-stopped
     network_mode: host
     cap_add:
