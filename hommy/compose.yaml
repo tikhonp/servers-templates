@@ -7,18 +7,6 @@ configs:
           {"Proxy":"http://127.0.0.1:8581"}}}},
       "AllowFunnel":{"$${TS_CERT_DOMAIN}:443":false}}
 
-  dnsmasq-filtered-aaaa-conf:
-    content: |
-      no-resolv
-      server=1.1.1.1
-      server=8.8.8.8
-      cache-size=10000
-      # log-queries
-      # log-facility=-
-      filter-AAAA
-      filter-rr=AAAA
-
-
 services:
   homebridge:
     image: homebridge/homebridge:latest
@@ -70,49 +58,6 @@ services:
       - NET_ADMIN
     volumes:
       - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10mb"
-        max-file: "1"
-
-  dnsmasq-filtered-aaaa:
-    image: dockurr/dnsmasq:2
-    container_name: dnsmasq-filtered-aaaa
-    restart: unless-stopped
-    expose:
-      - "53/udp"
-      - "53/tcp"
-    configs:
-      - source: dnsmasq-filtered-aaaa-conf
-        target: /etc/dnsmasq.conf
-    logging:
-      driver: json-file
-      options:
-        max-size: "10mb"
-        max-file: "1"
-
-  dnsmasq:
-    image: dockurr/dnsmasq:2
-    container_name: dnsmasq
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    volumes:
-      - "./dnsmasq.conf:/etc/dnsmasq.conf:ro"
-    ports:
-      - "${SERVER_LAN_IP}:53:53/tcp"
-      - "${SERVER_LAN_IP}:53:53/udp"
-      - "[${SERVER_LAN_IPV6}]:53:53/tcp"
-      - "[${SERVER_LAN_IPV6}]:53:53/udp"
-    command: >
-      --no-resolv
-      --server=1.1.1.1
-      --server=8.8.8.8
-      --cache-size=10000
-      --listen-address=${SERVER_LAN_IP}
-      --listen-address=${SERVER_LAN_IPV6}
-      --except-interface=lo
     logging:
       driver: json-file
       options:

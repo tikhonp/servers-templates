@@ -9,8 +9,6 @@ set -e
 # NODE_NAME=your_node_name
 # HTTP_PROXY=http://your_proxy:port
 # HTTPS_PROXY=http://your_proxy:port
-# SERVER_LAN_IP=10.220.1.4
-# SERVER_LAN_IPV6=2a02:2168:ae5e:cf00:7b06:5a1c:698:adcb
 
 ENV_FILE=".env"
 
@@ -80,18 +78,6 @@ ask_for_env_vars() {
     __add_to_env "NODE_NAME" "$NODE_NAME"
     __add_to_env "HTTP_PROXY" "$HTTP_PROXY"
     __add_to_env "HTTPS_PROXY" "$HTTP_PROXY"
-
-    local suggested_lan_ip
-    suggested_lan_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
-
-    local suggested_lan_ipv6
-    suggested_lan_ipv6=$(ip -6 addr show scope global | grep inet6 | awk '{print $2}' | cut -d/ -f1 | head -n1)
-
-    read -e -i "$suggested_lan_ip" -p "Enter server LAN IP: " SERVER_LAN_IP
-    read -e -i "$suggested_lan_ipv6" -p "Enter server LAN IPv6: " SERVER_LAN_IPV6
-
-    __add_to_env "SERVER_LAN_IP" "$SERVER_LAN_IP"
-    __add_to_env "SERVER_LAN_IPV6" "$SERVER_LAN_IPV6"
 }
 
 # args:
@@ -200,8 +186,6 @@ main() {
     cd "$PROJECT_DIRECTORY" || exit 1
 
     curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/compose.yaml" || exit 1
-
-    curl -L -o ./dnsmasq.conf "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/dnsmasq.conf" || exit 1
 
     ask_for_env_vars
 
