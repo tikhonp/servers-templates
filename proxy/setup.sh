@@ -166,13 +166,13 @@ generate_xray_config() {
 
     __add_to_env "VLESS_PORT" "$vless_port"
 
-    local server_data server_data_encoded_base64
-    server_data=":${uuid}@${server_domain}:${vless_port}"
-    server_data_encoded_base64=$(printf "%s" "$server_data" | base64 -w 0)
+    local tag_name
+    printf "Enter tag name for VLESS link: "
+    read -r tag_name
 
     local vless_credentials
-    vless_credentials="vless://${server_data_encoded_base64}?tls=1&peer=${fake_domain}&allowInsecure=1&xtls=2&pbk=${public_key}&sid=${short_id}"
-    __add_to_credentials "VLESS (xray) shadowrocket url:" "$vless_credentials"
+    vless_credentials="vless://${uuid}@${server_domain}:${vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${fake_domain}&fp=chrome&pbk=${public_key}&sid=${short_id}&type=tcp&headerType=none&allowInsecure=0#${tag_name}"
+    __add_to_credentials "VLESS (xray) url" "$vless_credentials"
 
     local vless_raw_credentials
     vless_raw_credentials="server: ${server_domain}\nport: ${vless_port}\nuuid: ${uuid}\nfake domain for fake tls: ${fake_domain}\npublic key for x25519: ${public_key}\nshort id for xray: ${short_id}"
