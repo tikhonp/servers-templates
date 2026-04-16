@@ -2,7 +2,7 @@
   "log": { "loglevel": "warning" },
   "inbounds": [
     {
-      "tag": "vless-reality-inbound",
+      "tag": "vless-inbound",
       "listen": "VLESS_LISTEN_IP",
       "port": VLESS_PORT,
       "protocol": "vless",
@@ -10,13 +10,12 @@
         "clients": [
           {
             "id": "VLESS_CLIENT_UUID",
-            "flow": "xtls-rprx-vision"
           }
         ],
         "decryption": "none"
       },
       "streamSettings": {
-        "network": "tcp",
+        "network": "xhttp",
         "security": "reality",
         "realitySettings": {
           "show": false,
@@ -26,6 +25,17 @@
           "privateKey": "VLESS_PRIVATE_KEY",
           "shortIds": ["VLESS_SHORT_ID"]
         }
+      },
+      "xhttpSettings": {
+        "path": "/api/v1/data",
+        "mode": "auto",
+        "extra": {
+          "xPaddingBytes": "100-1000"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
       }
     }
   ],
