@@ -9,7 +9,7 @@ configs:
 
 services:
   homebridge:
-    image: homebridge/homebridge:latest
+    image: ghcr.io/homebridge/homebridge:latest
     container_name: homebridge
     restart: unless-stopped
     network_mode: host
