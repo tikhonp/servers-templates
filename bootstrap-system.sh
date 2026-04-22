@@ -121,6 +121,8 @@ EOF"
 }
 
 main() {
+    touch ~/.hushlogin
+
     install_docker
     ensure_docker_group
     add_user_to_docker || true

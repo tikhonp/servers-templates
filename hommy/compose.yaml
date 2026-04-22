@@ -49,21 +49,68 @@ services:
         max-size: "10mb"
         max-file: "1"
 
-  xray:
-    image: ghcr.io/xtls/xray-core:latest
-    container_name: xray
-    restart: unless-stopped
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
+  unifi-network:
+    image: lscr.io/linuxserver/unifi-network-application:latest
+    container_name: unifi-network
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - MEM_LIMIT=default
+      - MEM_STARTUP=default
+      - MONGO_USER=unifi
+      - MONGO_PASS=${MONGO_USER_PASS}
+      - MONGO_HOST=unifi-db
+      - MONGO_PORT=27017
+      - MONGO_DBNAME=unifi
+      - MONGO_AUTHSOURCE=admin
     volumes:
-      - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
+      - unifi-network-data:/config
+    ports:
+      - 8443:8443
+      - 3478:3478/udp
+      - 10001:10001/udp
+      - 8080:8080
+      - 1900:1900/udp #optional
+      - 8843:8843 #optional
+      - 8880:8880 #optional
+      - 6789:6789 #optional
+      - 5514:5514/udp #optional
+    restart: unless-stopped
     logging:
       driver: json-file
       options:
         max-size: "10mb"
         max-file: "1"
+    depends_on:
+      - unifi-db
+    profiles: ["unifi"]
+
+  unifi-db:
+    image: docker.io/mongo:4.4.18
+    container_name: unifi-db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASS}
+      - MONGO_USER=unifi
+      - MONGO_PASS=${MONGO_USER_PASS}
+      - MONGO_DBNAME=unifi
+      - MONGO_AUTHSOURCE=admin
+    expose:
+      - 27017
+    volumes:
+      - "unifi-db:/data/db"
+      - "./init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10mb"
+        max-file: "1"
+    profiles: ["unifi"]
 
 volumes:
   ts-data:
   homebridge:
+  unifi-network-data:
+  unifi-db:
