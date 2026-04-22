@@ -106,10 +106,10 @@ main() {
 
     setup_unifi
 
-    printf "$boostrapped_credentials\n"
-
-    printf "$boostrapped_credentials" > credentials.txt
-    echo "All credentials have been saved to credentials.txt in the project directory."
+    # printf "$boostrapped_credentials\n"
+    #
+    # printf "$boostrapped_credentials" > credentials.txt
+    # echo "All credentials have been saved to credentials.txt in the project directory."
 
     echo "Setup complete! Now run:
 
