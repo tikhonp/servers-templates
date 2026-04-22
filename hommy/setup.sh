@@ -58,8 +58,8 @@ setup_unifi() {
     read -p "Do you want to enable Unifi Network? (y/n) " enable_unifi
     if [[ "$enable_unifi" =~ ^[Yy]$ ]]; then
         __add_to_env "COMPOSE_PROFILES" "unifi"
-        MONGO_INITDB_ROOT_PASSWORD=$(openssl rand -base64 32)
-        MONGO_PASS=$(openssl rand -base64 32)
+        MONGO_INITDB_ROOT_PASSWORD=$(openssl rand -hex 8)
+        MONGO_PASS=$(openssl rand -hex 8)
         __add_to_env "MONGO_ROOT_PASS" "$MONGO_INITDB_ROOT_PASSWORD"
         __add_to_env "MONGO_USER_PASS" "$MONGO_PASS"
     fi
