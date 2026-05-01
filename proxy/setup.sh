@@ -291,6 +291,11 @@ parse_arguments() {
     done
 }
 
+install_packets() {
+    sudo apt update
+    sudo apt install -y uuid-runtime
+}
+
 main() {
     parse_arguments "$@"
 
@@ -302,6 +307,8 @@ main() {
     else
         echo "Skipping system bootstrap as per argument."
     fi
+
+    install_packets
 
     echo "Setting up proxy in $PROJECT_DIRECTORY"
     if [ -d "$PROJECT_DIRECTORY" ]; then
