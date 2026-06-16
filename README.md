@@ -12,8 +12,21 @@ For now there is home server and proxy server. They are located in their dirs:
 
 # Hommy server
 
+Native (non-Docker) home-server provisioning: installs Homebridge from its apt repo,
+Tailscale joined to a self-hosted headscale control server, and optionally UniFi OS Server.
+
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/hommy/setup.sh)"
+```
+
+The script prompts for an optional system-wide apt HTTP proxy (useful where the Homebridge
+repos are blocked, so future `apt upgrade`s still work), the headscale login server URL +
+pre-auth key, and the UniFi OS Server `.bin` download URL.
+
+Options are:
+```
+--dir <dir>       - directory for the setup summary (hommy-info.txt), default is /home/username/hommy
+--skip-bootstrap  - skip base prep (apt prerequisites + SSH password hardening)
 ```
 
 # Proxy/VPN server
