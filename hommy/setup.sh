@@ -6,7 +6,8 @@ set -e
 #
 # Installs, on a fresh Debian/Raspbian/Ubuntu host:
 #   - Homebridge (HomeKit bridge) via the official apt repository (repo.homebridge.io)
-#   - Tailscale via tailscale.com/install.sh, joined to a self-hosted headscale control server
+#   - Tailscale via tailscale.com/install.sh (install only; the user runs `tailscale up` to
+#     join their self-hosted headscale control server afterwards)
 #   - (optional) UniFi OS Server (Podman-based, x86_64 only) from a ui.com .bin installer
 #
 # Homebridge repos may be unreachable in some regions, so an optional HTTP proxy can be
@@ -130,27 +131,13 @@ install_homebridge() {
     __add_to_info "Homebridge" "Web UI: http://<this-host>:8581 (also reachable on the tailnet IP)\nManage: sudo hb-service {start|stop|restart|logs}\nConfig: /var/lib/homebridge/config.json\nUpdate later: sudo apt update && sudo apt install --only-upgrade homebridge"
 }
 
-# Tailscale, joined to a self-hosted headscale control server.
+# Tailscale install only. Joining a control server (`tailscale up`) is left to the user so
+# they can supply their headscale login server, pre-auth key, and hostname at run time.
 install_tailscale() {
     echo "Installing Tailscale..."
     curl -fsSL https://tailscale.com/install.sh | sh
 
-    read -r -p "Enter headscale login server URL (e.g. https://headscale.example.com): " TS_LOGIN_SERVER
-    read -r -p "Enter TS_AUTHKEY (headscale pre-auth key): " TS_AUTHKEY
-    read -r -p "Enter NODE_NAME (tailscale hostname): " NODE_NAME
-    read -r -p "Enter extra 'tailscale up' args (or leave empty): " TS_EXTRA_ARGS
-
-    echo "Bringing Tailscale up against ${TS_LOGIN_SERVER}..."
-    # shellcheck disable=SC2086
-    as_root tailscale up \
-        --login-server="$TS_LOGIN_SERVER" \
-        --authkey="$TS_AUTHKEY" \
-        --hostname="$NODE_NAME" \
-        $TS_EXTRA_ARGS
-
-    local ts_ip
-    ts_ip=$(tailscale ip -4 2>/dev/null | head -n1 || true)
-    __add_to_info "Tailscale" "Control server: ${TS_LOGIN_SERVER}\nNode name: ${NODE_NAME}\nTailnet IPv4: ${ts_ip:-<pending>}\nHomebridge over tailnet: http://${ts_ip:-<tailscale-ip>}:8581\nStatus: tailscale status"
+    __add_to_info "Tailscale" "Installed but NOT connected. To join your headscale control server, run:\n  sudo tailscale up --login-server=<https://headscale.example.com> --authkey=<headscale-pre-auth-key> --hostname=<node-name>\nThen check: tailscale status\nFind the tailnet IP with: tailscale ip -4\nHomebridge will then be reachable over the tailnet at http://<tailnet-ip>:8581"
 }
 
 # UniFi OS Server (optional). Podman-based (Docker unsupported); ships x64 and arm64 Linux
@@ -201,8 +188,21 @@ install_unifi() {
     local unifi_dir="$PROJECT_DIRECTORY/unifi-os-server"
     mkdir -p "$unifi_dir"
     local installer="$unifi_dir/unifi-os-server-installer.bin"
+
+    # The ui.com download may be faster/only reachable directly, so allow bypassing the
+    # configured HTTP proxy just for this download. --noproxy '*' ignores the *_proxy env vars.
+    local curl_proxy_opts=""
+    if [ -n "$HTTP_PROXY_URL" ]; then
+        read -r -p "Download the UniFi installer WITHOUT the HTTP proxy? (y/n) " unifi_no_proxy
+        if [[ "$unifi_no_proxy" =~ ^[Yy]$ ]]; then
+            curl_proxy_opts="--noproxy *"
+            echo "Bypassing proxy for the UniFi download."
+        fi
+    fi
+
     echo "Downloading UniFi OS Server installer..."
-    curl -fL -o "$installer" "$UNIFI_URL"
+    # shellcheck disable=SC2086
+    curl $curl_proxy_opts -fL -o "$installer" "$UNIFI_URL"
     chmod +x "$installer"
 
     echo "Running UniFi OS Server installer (this can take a few minutes)..."
