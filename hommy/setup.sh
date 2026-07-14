@@ -137,7 +137,7 @@ install_tailscale() {
     echo "Installing Tailscale..."
     curl -fsSL https://tailscale.com/install.sh | sh
 
-    __add_to_info "Tailscale" "Installed but NOT connected. To join your headscale control server, run:\n  sudo tailscale up --login-server=<https://headscale.example.com> --authkey=<headscale-pre-auth-key> --hostname=<node-name>\nThen check: tailscale status\nFind the tailnet IP with: tailscale ip -4\nHomebridge will then be reachable over the tailnet at http://<tailnet-ip>:8581"
+    __add_to_info "Tailscale" "Installed but NOT connected. To join your headscale control server, run:\n  sudo tailscale up --login-server=<https://headscale.example.com> --authkey=<headscale-pre-auth-key> --hostname=<node-name> --accept-dns=false\n(--accept-dns=false keeps the server's own DNS: headscale-pushed MagicDNS/nameservers would rewrite /etc/resolv.conf and can break local resolution and apt)\nThen check: tailscale status\nFind the tailnet IP with: tailscale ip -4\nHomebridge will then be reachable over the tailnet at http://<tailnet-ip>:8581"
 }
 
 # UniFi OS Server (optional). Podman-based (Docker unsupported); ships x64 and arm64 Linux
