@@ -2,26 +2,23 @@
 
 set -e
 
+# VLESS-only proxy behind nginx.
+#
+# nginx terminates TLS for your domain, serves a decoy one-page site at / and forwards
+# only two secret paths to xray as plain unencrypted traffic:
+#   https://<domain><ws-path>         -> xray VLESS over WebSocket (xray:10001)
+#   https://<domain><xhttp-path>/...  -> xray VLESS over XHTTP     (xray:10002)
+# The Let's Encrypt certificate is issued here once and then renewed by the certbot container.
+
 # SCHEME FOR .env file:
 #
-# SERVER_DOMAIN=vpn.example.com
-# SERVER_IP=123.45.678.90
-#
-# MTPROTO_PORT=443
-# MTPROTO_SECRET=ee...
-#
-# VLESS_PORT=8443
-#
-# PROXY_USERNAME=some_random_username
-# PROXY_PASSWORD=some_random_password
-# PROXY_SOCKS5_PORT=1080
-# PROXY_HTTTP_PORT=8080
-#
-# XRAY_SUBNET=
-# XRAY_IP=
-# CONTAINER_POSTFIX=
+# CONTAINER_POSTFIX=a1b2
+# SERVER_DOMAIN=example.com
+# VLESS_WS_PATH=/0123456789abcdef
+# VLESS_XHTTP_PATH=/fedcba9876543210
 
 ENV_FILE=".env"
+RAW_BASE_URL="https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy"
 
 __add_to_env() {
     local name="$1"
@@ -40,226 +37,157 @@ __add_to_credentials() {
     boostrapped_credentials="${boostrapped_credentials}\n${name}:\n${value}\n"
 }
 
-# Script generates mtproto secret based on fake domain for fake tls.
-# Args:
-#  $1 - fake domain for fake tls
-# Output:
-#  mtproto secret for fake tls
-generate_mtproto_secret() {
-    local fake_domain="$1"
-
-    if [ -z "$fake_domain" ]; then
-        return 1
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+        return $?
     fi
 
-    local domain_hex random_hex needed secret
-    domain_hex=$(printf '%s' "$fake_domain" | xxd -ps | tr -d '\n')
-
-    if [ "${#domain_hex}" -gt 30 ]; then
-        domain_hex=${domain_hex:0:30}
+    if command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+        return $?
     fi
 
-    needed=$((30 - ${#domain_hex}))
-        if [ "$needed" -gt 0 ]; then
-            random_hex=$(openssl rand -hex 16 | head -c "$needed")
-        else
-            random_hex=""
-        fi
-
-        secret="ee${domain_hex}${random_hex}"
-
-        echo "$secret"
-    }
-
-# Asks user for fake domain for mtproto, generates secret,
-# adds secret and mtproto port to .env file,
-# gererates credentials string in this format:
-#    https://t.me/proxy?server=<server-domain>&port=<mt-proto-port>&secret=<generated-secret>
-# and adds it to credentials string to print at the end.
-# Args:
-#  $1 - server domain
-#  $2 - mtproto port
-bootstrap_mtproto() {
-    echo "Bootstrapping MTProto proxy..."
-
-    local server_domain="$1"
-    local mtproto_port="$2"
-    local fake_domain mtproto_secret
-
-    if [ -z "$server_domain" ] || [ -z "$mtproto_port" ]; then
-        return 1
-    fi
-
-    printf "Enter fake domain for MTProto (used for Fake TLS): "
-    read -r fake_domain
-
-    mtproto_secret=$(generate_mtproto_secret "$fake_domain") || return 1
-
-    __add_to_env "MTPROTO_PORT" "$mtproto_port"
-    __add_to_env "MTPROTO_SECRET" "$mtproto_secret"
-
-    local credentials
-    credentials="https://t.me/proxy?server=${server_domain}&port=${mtproto_port}&secret=${mtproto_secret}"
-    __add_to_credentials "MTProto (telegram-proxy)" "$credentials"
-}
-
-generate_xray_short_id() {
-    openssl rand -hex 8
+    echo "This script needs root privileges for '$*'" >&2
+    exit 1
 }
 
 generate_xray_uuid() {
     uuidgen
 }
 
-# outputs private key, public key and hash32 for x25519 in this format:
-# <private_key> <public_key> <hash32>
-generate_x25519_key_pair() {
-    local data
-    data=$(docker run --rm ghcr.io/xtls/xray-core x25519)
+# Downloads compose file, xray config, nginx template and decoy site
+# into the current directory.
+download_templates() {
+    echo "Downloading templates..."
 
-    # data contains something like:
-    # 
-    # PrivateKey: -AB-FsyY-Bxf1Y9FsTBDrBC-RSa2wKgJ3Jfk-Ev1oVs
-    # Password (PublicKey): I8dJ46slbzxLouqc5IaDT5iOtmZ9uqptEWa_dsCP6HM
-    # Hash32: 91M-4YOEUz3HSsReTeHwMbWdNPEYIm75zaap94wz1Pw
-    #
-    # We need to extract private and public keys from this output.
+    mkdir -p nginx site certbot/conf certbot/www
 
-    local private_key public_key hash32
-    private_key=$(echo "$data" | grep "PrivateKey:" | awk '{print $2}')
-    public_key=$(echo "$data" | grep "Password (PublicKey):" | awk '{print $3}')
-    hash32=$(echo "$data" | grep "Hash32:" | awk '{print $2}')
+    local file
+    for file in compose.yaml xray-config.json nginx/default.conf.template site/index.html; do
+        curl -fsSL -o "./${file}" "${RAW_BASE_URL}/${file}" || exit 1
+    done
+}
 
-    echo "$private_key" "$public_key" "$hash32"
+SERVER_DOMAIN=""
+LETSENCRYPT_EMAIL=""
+
+# Asks user for server domain and email for Let's Encrypt, warns if the domain
+# doesn't resolve to this server, adds domain to .env file.
+# Also stores them in global variables for later use.
+ask_for_domain_and_email() {
+    local public_ip resolved_ips confirm
+    public_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
+
+    printf "Seems like your server's public IP is: %s\n" "$public_ip"
+    echo "Use a separate domain not linked to you; its A record must point to this server."
+
+    printf "Enter server domain (e.g. example.com): "
+    read -r SERVER_DOMAIN
+    if [ -z "$SERVER_DOMAIN" ]; then
+        echo "Domain is required."
+        exit 1
+    fi
+
+    resolved_ips=$(getent ahostsv4 "$SERVER_DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' ')
+    if [[ " $resolved_ips " != *" $public_ip "* ]]; then
+        printf "WARNING: %s resolves to '%s', not to %s.\n" "$SERVER_DOMAIN" "${resolved_ips% }" "$public_ip"
+        echo "Certificate issuing will fail unless the domain points to this server."
+        read -r -p "Continue anyway? (y/n) " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+
+    printf "Enter email for Let's Encrypt expiry notices (or leave empty): "
+    read -r LETSENCRYPT_EMAIL
+
+    __add_to_env "SERVER_DOMAIN" "$SERVER_DOMAIN"
+}
+
+# Issues the first certificate with a one-off certbot container in standalone mode
+# (nginx can't start without a certificate). Renewals are done by the certbot service.
+# args:
+# $1 - server domain
+# $2 - email, may be empty
+issue_certificate() {
+    local server_domain="$1"
+    local email="$2"
+
+    local email_args=(--register-unsafely-without-email)
+    if [ -n "$email" ]; then
+        email_args=(-m "$email" --no-eff-email)
+    fi
+
+    echo "Issuing Let's Encrypt certificate for ${server_domain}..."
+
+    if ! as_root docker run --rm -p 80:80 \
+        -v "$PWD/certbot/conf:/etc/letsencrypt" \
+        certbot/certbot certonly --standalone --non-interactive --agree-tos \
+        "${email_args[@]}" -d "$server_domain"; then
+        echo "Failed to issue certificate. Check that the A record of ${server_domain} points to this server and port 80 is open and free."
+        exit 1
+    fi
+}
+
+VLESS_WS_PATH=""
+VLESS_XHTTP_PATH=""
+
+# Generates random secret paths for both xray inbounds, adds them to .env file.
+generate_paths() {
+    VLESS_WS_PATH="/$(openssl rand -hex 8)"
+    VLESS_XHTTP_PATH="/$(openssl rand -hex 8)"
+
+    __add_to_env "VLESS_WS_PATH" "$VLESS_WS_PATH"
+    __add_to_env "VLESS_XHTTP_PATH" "$VLESS_XHTTP_PATH"
 }
 
 # args:
 # $1 - server domain
-# $2 - vless port
+# $2 - websocket path
+# $3 - xhttp path
 #
-# Script generates xray-config.json file
+# Fills xray-config.json template and generates VLESS links.
 generate_xray_config() {
     echo "Generating xray config for VLESS..."
 
     local server_domain="$1"
-    local vless_port="$2"
-    local vless_listen_ip="$3"
+    local ws_path="$2"
+    local xhttp_path="$3"
 
-    local fake_domain private_key public_key hash32 uuid short_id
-
-    printf "Enter fake domain for VLESS (used for Fake TLS): "
-    read -r fake_domain
-    read -r private_key public_key hash32 < <(generate_x25519_key_pair)
+    local uuid
     uuid=$(generate_xray_uuid)
-    short_id=$(generate_xray_short_id)
-
-    curl -L -o ./xray-config.json "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/xray-config.json" || exit 1
 
     sed -i \
-        -e "s|VLESS_LISTEN_IP|${vless_listen_ip}|g" \
-        -e "s|VLESS_PORT|${vless_port}|g" \
         -e "s|VLESS_CLIENT_UUID|${uuid}|g" \
-        -e "s|VLESS_FAKE_DOMAIN|${fake_domain}|g" \
-        -e "s|VLESS_SERVER_DOMAIN|${server_domain}|g" \
-        -e "s|VLESS_PRIVATE_KEY|${private_key}|g" \
-        -e "s|VLESS_SHORT_ID|${short_id}|g" ./xray-config.json
-
-    __add_to_env "VLESS_PORT" "$vless_port"
+        -e "s|VLESS_WS_PATH|${ws_path}|g" \
+        -e "s|VLESS_XHTTP_PATH|${xhttp_path}|g" ./xray-config.json
 
     local tag_name
-    printf "Enter tag name for VLESS link: "
+    printf "Enter tag name for VLESS links: "
     read -r tag_name
 
-    local vless_credentials
-    vless_credentials="vless://${uuid}@${server_domain}:${vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${fake_domain}&fp=chrome&pbk=${public_key}&sid=${short_id}&type=tcp&headerType=none&allowInsecure=0#${tag_name}"
-    __add_to_credentials "VLESS (xray) url" "$vless_credentials"
+    # Paths are hex, so only the leading slash needs URL-encoding.
+    local common_params
+    common_params="encryption=none&security=tls&sni=${server_domain}&fp=chrome&host=${server_domain}"
+
+    local ws_credentials
+    ws_credentials="vless://${uuid}@${server_domain}:443?${common_params}&alpn=http%2F1.1&type=ws&path=%2F${ws_path#/}#${tag_name}-ws"
+    __add_to_credentials "VLESS WebSocket url" "$ws_credentials"
+
+    # Client mode "auto" means packet-up over TLS (many small POSTs); stream-up keeps one
+    # streaming POST through nginx grpc_pass. The server accepts any mode, so clients can
+    # still switch to packet-up (e.g. behind a CDN).
+    local xhttp_credentials
+    xhttp_credentials="vless://${uuid}@${server_domain}:443?${common_params}&alpn=h2&type=xhttp&path=%2F${xhttp_path#/}&mode=stream-up#${tag_name}-xhttp"
+    __add_to_credentials "VLESS XHTTP url" "$xhttp_credentials"
 
     local vless_raw_credentials
-    vless_raw_credentials="server: ${server_domain}\nport: ${vless_port}\nuuid: ${uuid}\nfake domain for fake tls: ${fake_domain}\npublic key for x25519: ${public_key}\nshort id for xray: ${short_id}"
+    vless_raw_credentials="server: ${server_domain}\nport: 443\nuuid: ${uuid}\nsecurity: tls (sni ${server_domain})\nwebsocket path: ${ws_path}\nxhttp path: ${xhttp_path}\nxhttp mode: stream-up"
     __add_to_credentials "VLESS (raw parameters)" "$vless_raw_credentials"
 }
 
-# args:
-# $1 - server domain
-# $2 - socks5 port
-# $2 - http port
-setup_proxy() {
-    echo "Setting up HTTP/SOCKS5 proxy with authentication..."
-
-    local server_domain="$1"
-    local socks5_port="$2"
-    local http_port="$3"
-
-    local username password
-    username=$(openssl rand -hex 8)
-    password=$(openssl rand -hex 16)
-
-    __add_to_env "PROXY_USERNAME" "$username"
-    __add_to_env "PROXY_PASSWORD" "$password"
-    __add_to_env "PROXY_SOCKS5_PORT" "$socks5_port"
-    __add_to_env "PROXY_HTTP_PORT" "$http_port"
-
-    local socks5_credentials
-    socks5_credentials="socks5://${username}:${password}@${server_domain}:${socks5_port}"
-    __add_to_credentials "SOCKS5 proxy" "$socks5_credentials"
-
-    local http_credentials
-    http_credentials="http://${username}:${password}@${server_domain}:${http_port}"
-    __add_to_credentials "HTTP proxy" "$http_credentials"
-}
-
-SERVER_DOMAIN=""
-SERVER_IP=""
-
-# Asks user for server domain and ip, adds them to .env file.
-# Also stores them in global variables for later use.
-ask_for_server_domain_and_ip() {
-    local suggested_public_ip
-    suggested_public_ip=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
-
-    printf "Seems like your server's public IP as: %s\n" "$suggested_public_ip"
-
-    printf "Enter server domain or public ip (e.g. vpn.example.com): "
-    read -r SERVER_DOMAIN
-
-    read -e -i "$suggested_public_ip" -p "Enter server public IP: " SERVER_IP
-
-    __add_to_env "SERVER_DOMAIN" "$SERVER_DOMAIN"
-    __add_to_env "SERVER_IP" "$SERVER_IP"
-}
-
-MTPROTO_PORT=
-VLESS_PORT=
-SOCKS5_PORT=
-HTTP_PORT=
-
-generate_random_ports() {
-    echo "Generating random ports for MTProto, VLESS, SOCKS5 and HTTP..."
-
-    ports=($(shuf -i 20000-65535 -n 4))
-
-    MTPROTO_PORT=${ports[0]}
-    VLESS_PORT=${ports[1]}
-    SOCKS5_PORT=${ports[2]}
-    HTTP_PORT=${ports[3]}
-}
-
-XRAY_SUBNET=""
-XRAY_IP=""
 CONTAINER_POSTFIX=""
-
-generate_random_subnet_and_ip() {
-    local subnet_octet host_octet
-
-    subnet_octet=$(shuf -i 20-254 -n 1)
-    host_octet=$(shuf -i 2-254 -n 1)
-
-    XRAY_SUBNET="172.${subnet_octet}.0.0/16"
-    XRAY_IP="172.${subnet_octet}.0.${host_octet}"
-
-    __add_to_env "XRAY_SUBNET" "$XRAY_SUBNET"
-    __add_to_env "XRAY_IP" "$XRAY_IP"
-}
 
 generate_container_postfix() {
     CONTAINER_POSTFIX=$(openssl rand -hex 2)
@@ -292,14 +220,12 @@ parse_arguments() {
 }
 
 install_packets() {
-    sudo apt update
-    sudo apt install -y uuid-runtime
+    as_root apt update
+    as_root apt install -y uuid-runtime
 }
 
 main() {
     parse_arguments "$@"
-
-    generate_random_ports
 
     if [ "$SKIP_BOOTSTRAP" = false ]; then
         echo "Bootstrapping system..."
@@ -318,22 +244,21 @@ main() {
     mkdir -p "$PROJECT_DIRECTORY"
     cd "$PROJECT_DIRECTORY" || exit 1
 
-    generate_random_subnet_and_ip
     generate_container_postfix
 
-    curl -L -o ./compose.yaml "https://raw.githubusercontent.com/tikhonp/servers-templates/refs/heads/master/proxy/compose.yaml" || exit 1
+    download_templates
 
-    ask_for_server_domain_and_ip
+    ask_for_domain_and_email
 
-    bootstrap_mtproto "$SERVER_DOMAIN" "$MTPROTO_PORT"
+    issue_certificate "$SERVER_DOMAIN" "$LETSENCRYPT_EMAIL"
 
-    generate_xray_config "$SERVER_DOMAIN" "$VLESS_PORT" "$XRAY_IP"
+    generate_paths
 
-    setup_proxy "$SERVER_DOMAIN" "$SOCKS5_PORT" "$HTTP_PORT"
+    generate_xray_config "$SERVER_DOMAIN" "$VLESS_WS_PATH" "$VLESS_XHTTP_PATH"
 
-    printf "$boostrapped_credentials\n"
+    printf "%b\n" "$boostrapped_credentials"
 
-    printf "$boostrapped_credentials" > credentials.txt
+    printf "%b\n" "$boostrapped_credentials" > credentials.txt
     echo "All credentials have been saved to credentials.txt in the project directory."
 
     echo "Setup complete! Now run:
@@ -341,7 +266,7 @@ main() {
     cd $PROJECT_DIRECTORY
     docker compose up -d
 
-to start your proxy."
+to start your proxy. https://$SERVER_DOMAIN will show the decoy site from ./site."
 }
 
 main "$@"

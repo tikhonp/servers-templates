@@ -1,15 +1,41 @@
 services:
-  mtproto:
-    image: telegrammessenger/proxy:latest
-    container_name: "mtproto-${CONTAINER_POSTFIX}"
+  nginx:
+    image: nginx:stable-alpine
+    container_name: "nginx-${CONTAINER_POSTFIX}"
+    restart: unless-stopped
+    depends_on:
+      - xray
+    environment:
+      - SERVER_DOMAIN=$SERVER_DOMAIN
+      - VLESS_WS_PATH=$VLESS_WS_PATH
+      - VLESS_XHTTP_PATH=$VLESS_XHTTP_PATH
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - "./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro"
+      - "./site:/usr/share/nginx/html:ro"
+      - "./certbot/conf:/etc/letsencrypt:ro"
+      - "./certbot/www:/var/www/certbot:ro"
+    # Reload every 6h to pick up renewed certificates. /docker-entrypoint.sh is called
+    # explicitly because it renders the templates only when its command is `nginx`.
+    command: /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g "daemon off;"'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: "certbot-${CONTAINER_POSTFIX}"
     restart: unless-stopped
     volumes:
-      - "mtproto:/data"
-    env_file: .env
-    environment:
-      - SECRET=$MTPROTO_SECRET
-    ports:
-      - "$MTPROTO_PORT:443"
+      - "./certbot/conf:/etc/letsencrypt"
+      - "./certbot/www:/var/www/certbot"
+    # The first certificate is issued by setup.sh in standalone mode;
+    # --webroot here overrides that, because nginx holds port 80 afterwards.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
     logging:
       driver: "json-file"
       options:
@@ -22,47 +48,12 @@ services:
     restart: unless-stopped
     volumes:
       - "./xray-config.json:/usr/local/etc/xray/config.json:ro"
-    env_file: .env
-    ports:
-      - "$SERVER_IP:$VLESS_PORT:$VLESS_PORT/tcp"
+    # Reachable only by nginx over the compose network, never published to the host.
     expose:
-      - "$VLESS_PORT"
-    networks:
-      xraynet:
-        ipv4_address: ${XRAY_IP}
+      - "10001"
+      - "10002"
     logging:
       driver: "json-file"
       options:
         max-size: "100m"
         max-file: "10"
-
-  proxy:
-    image: ghcr.io/tarampampam/3proxy:latest
-    container_name: "proxy-${CONTAINER_POSTFIX}"
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      - PROXY_LOGIN=$PROXY_USERNAME
-      - PROXY_PASSWORD=$PROXY_PASSWORD
-      - PROXY_PORT=3128
-      - SOCKS_PORT=1080
-    ports:
-      - "$PROXY_SOCKS5_PORT:1080/tcp"
-      - "$PROXY_HTTP_PORT:3128/tcp"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-volumes:
-  mtproto:
-    name: "mtproto-${CONTAINER_POSTFIX}"
-
-networks:
-  xraynet:
-    name: "xraynet-${CONTAINER_POSTFIX}"
-    ipam:
-      driver: default
-      config:
-        - subnet: "${XRAY_SUBNET}"
