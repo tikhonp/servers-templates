@@ -7,7 +7,6 @@ services:
       - xray
     environment:
       - SERVER_DOMAIN=$SERVER_DOMAIN
-      - VLESS_WS_PATH=$VLESS_WS_PATH
       - VLESS_XHTTP_PATH=$VLESS_XHTTP_PATH
     ports:
       - "80:80/tcp"
@@ -51,7 +50,6 @@ services:
     # Reachable only by nginx over the compose network, never published to the host.
     expose:
       - "10001"
-      - "10002"
     logging:
       driver: "json-file"
       options:

@@ -5,16 +5,14 @@ set -e
 # VLESS-only proxy behind nginx.
 #
 # nginx terminates TLS for your domain, serves a decoy one-page site at / and forwards
-# only two secret paths to xray as plain unencrypted traffic:
-#   https://<domain><ws-path>         -> xray VLESS over WebSocket (xray:10001)
-#   https://<domain><xhttp-path>/...  -> xray VLESS over XHTTP     (xray:10002)
+# only one secret path to xray as plain unencrypted traffic:
+#   https://<domain><xhttp-path>/...  -> xray VLESS over XHTTP (xray:10001)
 # The Let's Encrypt certificate is issued here once and then renewed by the certbot container.
 
 # SCHEME FOR .env file:
 #
 # CONTAINER_POSTFIX=a1b2
 # SERVER_DOMAIN=example.com
-# VLESS_WS_PATH=/0123456789abcdef
 # VLESS_XHTTP_PATH=/fedcba9876543210
 
 ENV_FILE=".env"
@@ -130,60 +128,47 @@ issue_certificate() {
     fi
 }
 
-VLESS_WS_PATH=""
 VLESS_XHTTP_PATH=""
 
-# Generates random secret paths for both xray inbounds, adds them to .env file.
-generate_paths() {
-    VLESS_WS_PATH="/$(openssl rand -hex 8)"
+# Generates random secret path for the xray inbound, adds it to .env file.
+generate_path() {
     VLESS_XHTTP_PATH="/$(openssl rand -hex 8)"
 
-    __add_to_env "VLESS_WS_PATH" "$VLESS_WS_PATH"
     __add_to_env "VLESS_XHTTP_PATH" "$VLESS_XHTTP_PATH"
 }
 
 # args:
 # $1 - server domain
-# $2 - websocket path
-# $3 - xhttp path
+# $2 - xhttp path
 #
-# Fills xray-config.json template and generates VLESS links.
+# Fills xray-config.json template and generates VLESS link.
 generate_xray_config() {
     echo "Generating xray config for VLESS..."
 
     local server_domain="$1"
-    local ws_path="$2"
-    local xhttp_path="$3"
+    local xhttp_path="$2"
 
     local uuid
     uuid=$(generate_xray_uuid)
 
     sed -i \
         -e "s|VLESS_CLIENT_UUID|${uuid}|g" \
-        -e "s|VLESS_WS_PATH|${ws_path}|g" \
         -e "s|VLESS_XHTTP_PATH|${xhttp_path}|g" ./xray-config.json
 
     local tag_name
-    printf "Enter tag name for VLESS links: "
+    printf "Enter tag name for VLESS link: "
     read -r tag_name
 
-    # Paths are hex, so only the leading slash needs URL-encoding.
-    local common_params
-    common_params="encryption=none&security=tls&sni=${server_domain}&fp=chrome&host=${server_domain}"
-
-    local ws_credentials
-    ws_credentials="vless://${uuid}@${server_domain}:443?${common_params}&alpn=http%2F1.1&type=ws&path=%2F${ws_path#/}#${tag_name}-ws"
-    __add_to_credentials "VLESS WebSocket url" "$ws_credentials"
-
+    # Path is hex, so only the leading slash needs URL-encoding.
     # Client mode "auto" means packet-up over TLS (many small POSTs); stream-up keeps one
     # streaming POST through nginx grpc_pass. The server accepts any mode, so clients can
     # still switch to packet-up (e.g. behind a CDN).
     local xhttp_credentials
-    xhttp_credentials="vless://${uuid}@${server_domain}:443?${common_params}&alpn=h2&type=xhttp&path=%2F${xhttp_path#/}&mode=stream-up#${tag_name}-xhttp"
+    xhttp_credentials="vless://${uuid}@${server_domain}:443?encryption=none&security=tls&sni=${server_domain}&fp=chrome&host=${server_domain}&alpn=h2&type=xhttp&path=%2F${xhttp_path#/}&mode=stream-up#${tag_name}"
     __add_to_credentials "VLESS XHTTP url" "$xhttp_credentials"
 
     local vless_raw_credentials
-    vless_raw_credentials="server: ${server_domain}\nport: 443\nuuid: ${uuid}\nsecurity: tls (sni ${server_domain})\nwebsocket path: ${ws_path}\nxhttp path: ${xhttp_path}\nxhttp mode: stream-up"
+    vless_raw_credentials="server: ${server_domain}\nport: 443\nuuid: ${uuid}\nsecurity: tls (sni ${server_domain})\nxhttp path: ${xhttp_path}\nxhttp mode: stream-up"
     __add_to_credentials "VLESS (raw parameters)" "$vless_raw_credentials"
 }
 
@@ -268,9 +253,9 @@ main() {
 
     issue_certificate "$SERVER_DOMAIN" "$LETSENCRYPT_EMAIL"
 
-    generate_paths
+    generate_path
 
-    generate_xray_config "$SERVER_DOMAIN" "$VLESS_WS_PATH" "$VLESS_XHTTP_PATH"
+    generate_xray_config "$SERVER_DOMAIN" "$VLESS_XHTTP_PATH"
 
     printf "%b\n" "$boostrapped_credentials"
 

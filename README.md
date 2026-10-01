@@ -40,20 +40,19 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/tikhonp/servers-template
 This script bootstraps vps, installs docker and sets up compose with VLESS only, hidden behind nginx:
 
 ```
-client --TLS:443--> nginx --/<ws-path>-------> xray (VLESS over WebSocket)
-                          --/<xhttp-path>/...-> xray (VLESS over XHTTP)
+client --TLS:443--> nginx --/<xhttp-path>/...-> xray (VLESS over XHTTP)
                           --anything else-----> decoy one-page site
 ```
 
 nginx terminates TLS (Let's Encrypt certificate, renewed by the certbot container), xray has no published
-ports and only gets plain traffic on two random secret paths. Connections to the server IP without the
+ports and only gets plain traffic on a random secret path. Connections to the server IP without the
 right SNI are rejected at the TLS handshake.
 
 Before running you need:
 - a separate domain not linked to you, with an A record pointing to the vps
 - ports 80 and 443 free and open (80 is used for certificate issuing and renewal)
 
-At the end the script prints two links (WebSocket and XHTTP) and saves them to `credentials.txt`
+At the end the script prints the VLESS XHTTP link and saves it to `credentials.txt`
 in the project directory. The decoy site lives in `site/` there, replace `site/index.html` with anything you like.
 
 Then it drops you into a subshell in the project directory with the docker group active, so `docker compose up -d`
