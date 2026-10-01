@@ -56,6 +56,9 @@ Before running you need:
 At the end the script prints two links (WebSocket and XHTTP) and saves them to `credentials.txt`
 in the project directory. The decoy site lives in `site/` there, replace `site/index.html` with anything you like.
 
+Then it drops you into a subshell in the project directory with the docker group active, so `docker compose up -d`
+works without re-login (`exit` returns to your original shell). New SSH logins get the group automatically.
+
 Options are:
 ```
 --dir <dir> - directory for compose files, default is /home/username/proxy

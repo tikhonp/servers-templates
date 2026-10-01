@@ -59,7 +59,9 @@ add_user_to_docker() {
 }
 
 activate_docker_group() {
-    if [ "${activate_group_for_current_shell:-false}" != "true" ]; then
+    # When piped (curl ... | sh) stdin is the script itself, so a newgrp shell would hit EOF and exit
+    # immediately; the caller has to switch groups itself.
+    if [ "${activate_group_for_current_shell:-false}" != "true" ] || [ ! -t 0 ]; then
         echo "Log out and back in (or run 'newgrp docker') to use docker without sudo."
         return
     fi

@@ -224,6 +224,22 @@ install_packets() {
     as_root apt install -y uuid-runtime
 }
 
+# Group membership granted during bootstrap only applies to new logins, so this process and the
+# user's shell can't talk to docker yet. Replaces this script with a shell in the project directory
+# that has the docker group active.
+enter_docker_group_shell() {
+    if id -nG | grep -qw docker; then
+        return
+    fi
+
+    if id -nG "$(id -un)" | grep -qw docker && [ -t 0 ] && command -v newgrp >/dev/null 2>&1; then
+        echo "Starting a shell in $PROJECT_DIRECTORY with the docker group active (exit to return)..."
+        exec newgrp docker
+    fi
+
+    echo "Note: log out and back in (or run 'newgrp docker') before using docker without sudo."
+}
+
 main() {
     parse_arguments "$@"
 
@@ -261,12 +277,13 @@ main() {
     printf "%b\n" "$boostrapped_credentials" > credentials.txt
     echo "All credentials have been saved to credentials.txt in the project directory."
 
-    echo "Setup complete! Now run:
+    echo "Setup complete! To start your proxy run in $PROJECT_DIRECTORY:
 
-    cd $PROJECT_DIRECTORY
     docker compose up -d
 
-to start your proxy. https://$SERVER_DOMAIN will show the decoy site from ./site."
+https://$SERVER_DOMAIN will show the decoy site from ./site."
+
+    enter_docker_group_shell
 }
 
 main "$@"
